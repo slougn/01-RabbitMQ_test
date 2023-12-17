@@ -3,6 +3,7 @@ import aio_pika
 import logging
 import asyncio
 
+logging.basicConfig(level=logging.INFO)
 # 定义一个生产者类
 class Producer:
     # 初始化方法，接受一个参数字典，包含服务器地址，交换机名称，路由键等信息
@@ -91,7 +92,7 @@ class Consumer:
     async def start_consuming(self, callback):
         try:
             # 使用queue的consume方法，传入callback函数和参数字典中的编码方式，返回一个消费者对象
-            consumer = await self.queue.consume(callback, encoding=self.params["encoding"])
+            consumer = await self.queue.consume(callback)
             # 使用logging记录开始消费的信息
             logging.info(f"RaabitMQ Consumer Started consuming messages from queue {self.params['queue_name']}")
             # 返回消费者对象
@@ -132,17 +133,22 @@ if __name__ == "__main__":
 
     import time
     
-    def on_message(message):
-        print(message.body)
+    async def on_message(message):
+        async with message.process():
+            print(message.body)
 
     async def main():
-        Pub = Producer(producer_config)
         Com = Consumer(consumer_config)
-        await Pub.connect()
         await Com.connect()
+        await Com.start_consuming(on_message)
+
+        Pub = Producer(producer_config)
+        await Pub.connect()
         for i in range(100):
             await Pub.publish(f"hello {i}th world")
-            time.sleep(3)
-        await Com.start_consuming(on_message)
-    
-    asyncio.run(main())
+            time.sleep(1)
+
+    loop = asyncio.get_event_loop()
+    loop.create_task(main())
+    loop.run_forever()
+
