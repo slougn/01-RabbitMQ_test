@@ -83,6 +83,7 @@ class Consumer:
             "password":self.params['password'],
             "ssl": self.params['ssl'],
             "timeout":self.params['timeout'],
+            "heartbeat": 0,
         }
         try:
             # 使用参数字典中的服务器地址创建一个连接
@@ -158,9 +159,6 @@ class MessageHandler:
         # logging.info("MessageHandler There is a new thread to handle message...")
         try:
             async with message.process():
-                if self.consumer.connection is not None and not self.consumer.connection.is_closed:
-                    await self.consumer.connection.send_heartbeat()
-                    logging.info("MessageHandler send_heartbeat...")
                 # 使用logging记录接收到的消息
                 logging.info(f"MessageHandler Received message {message.body} from queue {self.consumer.params['queue_name']}")
                 # 对消息进行一些处理，例如转换成大写
@@ -168,17 +166,10 @@ class MessageHandler:
                 print(message)
                 # 使用生产者的publish方法，将处理后的消息发送到另一个交换机
                 await self.simulate_handle_message()
-                if self.consumer.connection is not None and not self.consumer.connection.is_closed:
-                    await self.consumer.connection.send_heartbeat()
-                    logging.info("MessageHandler send_heartbeat...")
-
                 await self._send_message(message)
                 # 使用logging记录处理成功的信息
                 logging.info(f"MessageHandler Handled message {message.body} and sent it to exchange {self.producer.params['exchange_name']}")
-                print(f"self.consumer.need_auto_delete: {self.consumer.queue_auto_delete}")
-                
-
-                
+                print(f"self.consumer.need_auto_delete: {self.consumer.queue_auto_delete}")           
         except Exception as e:
             # 使用logging记录处理失败的异常
             logging.error(f"MessageHandler Failed to handle message {message.body}: {e}")
