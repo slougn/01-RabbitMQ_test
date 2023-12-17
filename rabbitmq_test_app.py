@@ -154,23 +154,30 @@ class MessageHandler:
         thread.start()
     
     # 异步方法，接受一个message参数，作为消费者的callback函数
-    async def receive_message(self, message):
+    async def handle_message(self, message):
         # logging.info("MessageHandler There is a new thread to handle message...")
         try:
-            # 使用logging记录接收到的消息
-            logging.info(f"MessageHandler Received message {message.body} from queue {self.consumer.params['queue_name']}")
-            # 对消息进行一些处理，例如转换成大写
-            # message = message.body.upper()
-            print(message)
-            # 使用生产者的publish方法，将处理后的消息发送到另一个交换机
-            await self.simulate_handle_message()
-            await self._send_message(message)
-            # 使用logging记录处理成功的信息
-            logging.info(f"MessageHandler Handled message {message.body} and sent it to exchange {self.producer.params['exchange_name']}")
-            
-            print(f"self.consumer.need_auto_delete: {self.consumer.queue_auto_delete}")
-            if not self.consumer.queue_auto_delete:
-                await message.ack()
+            async with message.process():
+                if self.consumer.connection is not None and not self.consumer.connection.is_closed:
+                    await self.consumer.connection.send_heartbeat()
+                    logging.info("MessageHandler send_heartbeat...")
+                # 使用logging记录接收到的消息
+                logging.info(f"MessageHandler Received message {message.body} from queue {self.consumer.params['queue_name']}")
+                # 对消息进行一些处理，例如转换成大写
+                # message = message.body.upper()
+                print(message)
+                # 使用生产者的publish方法，将处理后的消息发送到另一个交换机
+                await self.simulate_handle_message()
+                if self.consumer.connection is not None and not self.consumer.connection.is_closed:
+                    await self.consumer.connection.send_heartbeat()
+                    logging.info("MessageHandler send_heartbeat...")
+
+                await self._send_message(message)
+                # 使用logging记录处理成功的信息
+                logging.info(f"MessageHandler Handled message {message.body} and sent it to exchange {self.producer.params['exchange_name']}")
+                print(f"self.consumer.need_auto_delete: {self.consumer.queue_auto_delete}")
+                
+
                 
         except Exception as e:
             # 使用logging记录处理失败的异常
@@ -178,7 +185,7 @@ class MessageHandler:
             raise e
 
     # 异步方法，创建新线程，执行消息处理，但是只能创建一个线程，处理完毕后，关闭线程，再重新开启线程。
-    async def handle_message(self,message):
+    async def simulate_handle_message(self):
         import time
         # 模拟处理消息的耗时
         for i in range(300):
