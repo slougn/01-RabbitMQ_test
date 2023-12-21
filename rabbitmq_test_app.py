@@ -10,8 +10,8 @@ logging.basicConfig(level=logging.INFO)
 # 定义一个生产者类
 class Producer:
     # 初始化方法，接受一个参数字典，包含服务器地址，交换机名称，路由键等信息
-    def __init__(self, connecton,producer_config):
-        self.connection = connecton
+    def __init__(self,connection, producer_config):
+        self.connection = connection
         self.channel = None
         self.exchange = None
         self.exchange_name = producer_config["exchange_name"]
@@ -108,25 +108,20 @@ class Consumer:
 # 定义一个MessageHandler类
 class MessageHandler:
     # 初始化方法，接受两个参数字典，分别传给生产者和消费者的初始化方法
+    global connection
     def __init__(self, params):
         self.params = params
-        self.connection = None
         self.consumer = None
         self.producer = None
-        self._rabbit_message = {"exce": "empty","status": "empty", "received_message":None,"send_message":None} # {"status":["empty","received","send","done"]}
-        self.thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=2)
-        # 创建事件循环
-        self.new_loop_handlemessage = asyncio.new_event_loop()
         # 创建事件循环
         self.new_loop_rabbitmq = asyncio.new_event_loop()
-
         self.listen()
 
     async def create_connection(self):
-        self.connection_property = self.params["connection_config"]
+        connection_property = self.params["connection_config"]
         try:
             # 使用参数字典中的服务器地址创建一个连接
-            self.connection = await aio_pika.connect_robust(**self.connection_property)
+            self.connection = await aio_pika.connect_robust(**connection_property)
             return self.connection
         except Exception as e:
             # 使用logging记录连接失败的异常
@@ -138,52 +133,16 @@ class MessageHandler:
             self.connection.close()
             logging.info(f"RabbiMQ Client closed to {self.params['host']}")
 
-    @property
-    def rabbit_message(self):
-        return self._rabbit_message
-
-    @rabbit_message.setter
-    def rabbit_message(self, dict_value: dict):  # 确保都是在self.new_loop_rabbitmq中.
-        for key in dict_value.keys():
-            self.rabbit_message[key] = dict_value[key]
- 
-        if self._rabbit_message["exce"] == "done":
-            print("确认消息")
-            message = self._rabbit_message["received_message"]
-            asyncio.run(message.ack())
-        elif self._rabbit_message["exce"] == "received":
-            print("处理消息")
-            # self.task_handle_message =  self.thread_pool.submit(self.handle_message)  # 确保退出self.new_loop_handlemessage
-            self.thread_handle_message = threading.Thread(name="thread_handle_message",target=self.handle_message)
-            self.thread_handle_message.start()
-        elif self._rabbit_message["exce"] == "send":
-            print("发送消息")
-            message = self._rabbit_message["send_message"]
-            loop = asyncio.get_running_loop()
-            loop.create_task(self._send_message(message=message))
-            
-            
-    async def choose_behavior(self):
-        while True:
-            if self.rabbit_message["exce"] != self.rabbit_message["status"]:
-                print(f"执行： {self.rabbit_message['exce']}")
-                self.rabbit_message["exce"] = self.rabbit_message["status"]
-            else:
-                await asyncio.sleep(1)
- 
     # 异步方法，打包异步函数
     async def main(self):
         print("启动rabbitMQ的消费者")
-        # 创建连接
-        self.connection = await self.create_connection()
         # 创建 consumer 发布者
         self.producer = Producer(self.connection, self.params['producer_config'])
         self.consumer = Consumer(self.connection, self.params['consumer_config'])
         # 连接到rabbitmq服务器
         await self.consumer.connect()
         # 注册消息处理函数
-        await self.consumer.start_consuming(self.recevie_message)      
-
+        await self.consumer.start_consuming(self.handle_message)      
 
     # 放入新线程的函数，做一些准备工作
     def _prepare_thread(self):
@@ -191,46 +150,40 @@ class MessageHandler:
         asyncio.set_event_loop(self.new_loop_rabbitmq)
         # 创建任务
         self.new_loop_rabbitmq.create_task(self.main())
-        # 开始选择行为
-        self.new_loop_rabbitmq.create_task(self.choose_behavior())
         # 运行new_loop
         self.new_loop_rabbitmq.run_forever()
 
     # 异步方法，连接到rabbitmq服务器，分别调用生产者和消费者的connect方法
     def listen(self):
-        # self.task_rabbitmq = self.thread_pool.submit(self._prepare_thread)
+        def _preper_connection():
+            # 创建连接，在主线程中，之后，主线程会负责管理连接
+            loop = asyncio.get_event_loop()
+            global connection
+            connection = loop.run_until_complete(self.create_connection())
+            print(connection)
+        # 开启线程，运行consumer和producer
         self.thread_rabbitmq = threading.Thread(name="thread_rabbitmq",target=self._prepare_thread)
         self.thread_rabbitmq.start()
 
     # 异步方法，接受一个message参数，作为消费者的callback函数
-    async def recevie_message(self, message):
+    async def handle_message(self, message):
         try:
-            print(message.body)
-            self.rabbit_message = {"status": "received", "received_message": message}
-            # 使用logging记录处理成功的信息
-            logging.info(f"MessageHandler recevied message {message.body} and update")
+            async with message.process():
+                print(message.body)
+                print("处理消息")
+                # 模拟处理消息的耗时
+                for i in range(3):
+                    print(f"第{i}秒 处理消息")
+                    await asyncio.sleep(1)
+                send_message = "payload"
+                # 发送处理结果
+                await self._send_message(send_message)
+                # 使用logging记录处理成功的信息
+                logging.info(f"MessageHandler recevied message {message.body} and update")
         except Exception as e:
             # 使用logging记录处理失败的异常
             logging.error(f"MessageHandler Failed to handle message {message.body}: {e}")
             raise e
-
-    def handle_message(self):
-        print("启动消息处理")
-        #设置事件循环
-        asyncio.set_event_loop(self.new_loop_handlemessage)
-        # 运行new_loop
-        self.new_loop_handlemessage.run_until_complete(self._handle_message())
-        
-    async def _handle_message(self):
-        print("处理消息")
-        # 模拟处理消息的耗时
-        for i in range(3):
-            print(f"第{i}秒 处理消息")
-            await asyncio.sleep(1)
-        send_message = "payload"
-        self.rabbit_message = {"status": "send", "send_message": send_message}
-        print("处理完成")
-        return True
 
     # 异步方法
     async def _send_message(self, message):
@@ -240,7 +193,6 @@ class MessageHandler:
         await self.producer.publish(message)
         # 使用logging记录发送成功的信息
         logging.info(f"Sent message {message} to exchange {self.params['producer_config']['exchange_name']}")
-        self.rabbit_message = {"status": "done", "received_message": None, "send_message": None}
         # 关闭连接
         await self.producer.close()
 
@@ -310,7 +262,6 @@ if __name__ == "__main__":
 
     while True:
         print("这是主函数...")
-        print(f"最大线程数量:  {message_handler.thread_pool._max_workers}")
         print(f"正在使用的线程数： {threading.activeCount()}")
         print_threads()
 
