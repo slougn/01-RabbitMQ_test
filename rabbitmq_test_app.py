@@ -162,7 +162,14 @@ class MessageHandler:
             loop = asyncio.get_running_loop()
             loop.create_task(self._send_message(message=message))
             
-            # asyncio.run(self._send_message(message=message))
+            
+    async def choose_behavior(self):
+        while True:
+            if self.rabbit_message["exce"] != self.rabbit_message["status"]:
+                print(f"执行： {self.rabbit_message['exce']}")
+                self.rabbit_message["exce"] = self.rabbit_message["status"]
+            else:
+                await asyncio.sleep(1)
  
     # 异步方法，打包异步函数
     async def main(self):
@@ -177,11 +184,6 @@ class MessageHandler:
         # 注册消息处理函数
         await self.consumer.start_consuming(self.recevie_message)      
 
-    async def choose_behavior(self):
-        while True:
-            print(f"执行： {self.rabbit_message['exce']}")
-            self.rabbit_message["exce"] = self.rabbit_message["status"]
-            await asyncio.sleep(1)
 
     # 放入新线程的函数，做一些准备工作
     def _prepare_thread(self):
