@@ -144,7 +144,7 @@ if __name__ == "__main__":
 
         Pub = Producer(producer_config)
         await Pub.connect()
-        for i in range(100):
+        for i in range(2):
             await Pub.publish(f"hello {i}th world")
             time.sleep(1)
 
