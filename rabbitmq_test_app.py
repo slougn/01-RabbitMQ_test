@@ -177,9 +177,9 @@ class MessageHandler:
                 self.thread_message = threading.Thread(target=self.handle_message,args=(handle_msg,))
                 self.thread_message.start()
                 #阻塞等待消息处理完成
-                while not self.handle_event.is_set():
-                    self.handle_event.clear()
+                while not self.handle_event.is_set(): 
                     await asyncio.sleep(1)
+                self.handle_event.clear()
                 send_message = self.queue.get()
                 await self._send_message(send_message)
                 logging.info(f"{message.body} is sended")
